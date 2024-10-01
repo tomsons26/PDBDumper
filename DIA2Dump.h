@@ -53,3 +53,7 @@ HRESULT GetTable(IDiaSession *, REFIID, void **);
 // Functions defined in regs.cpp
 const wchar_t * SzNameC7Reg(USHORT, DWORD);
 const wchar_t * SzNameC7Reg(USHORT);
+
+//my addition
+bool DumpAllSpecificDwords(IDiaSession *, wchar_t *, wchar_t *);
+bool DumpCompilandContrib(IDiaSession *, IDiaSymbol *, const wchar_t *);

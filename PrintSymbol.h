@@ -44,7 +44,7 @@ void PrintSourceFile(IDiaSourceFile *);
 void PrintLines(IDiaSession *, IDiaSymbol *);
 void PrintLines(IDiaEnumLineNumbers *);
 void PrintSource(IDiaSourceFile *);
-void PrintSecContribs(IDiaSectionContrib *);
+void PrintSecContribs(IDiaSession *, IDiaSectionContrib *);
 void PrintStreamData(IDiaEnumDebugStreamData *);
 void PrintFrameData(IDiaFrameData *);
 
@@ -59,3 +59,10 @@ template<class T> void PrintGeneric(T t)
 		pPropertyStorage->Release();
 	}
 }
+
+//my addition
+void PrintSpecificDword(IDiaSession *, IDiaSectionContrib *, wchar_t *, wchar_t *);
+
+//PdbTypeMatch addition
+#include <string>
+void GetSymbolName(std::wstring & symbolName, IDiaSymbol * pSymbol);

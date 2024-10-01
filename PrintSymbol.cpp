@@ -11,6 +11,7 @@
 //
 
 #include "stdafx.h"
+#include <comdef.h>
 
 #include <malloc.h>
 
@@ -2127,9 +2128,91 @@ void PrintLines(IDiaEnumLineNumbers * pLines)
 	}
 }
 
+void PrintSimpleName(IDiaSymbol * pSymbol)
+{
+	BSTR bstrName;
+
+	if (pSymbol->get_name(&bstrName) != S_OK) {
+		wprintf(L"(none)");
+		return;
+	}
+	std::wstring n = bstrName;
+	SysFreeString(bstrName);
+
+	// unify sdtor and vdtor since they share addresses
+	if (n.find(L"??_E") != std::string::npos || n.find(L"??_G") != std::string::npos) {
+		n[3] = 'G';
+	}
+
+	wprintf(L"%s", n.c_str());
+}
+
+void PrintSimpleThunk(IDiaSymbol * pSymbol)
+{
+	DWORD dwRVA;
+	DWORD dwISect;
+	DWORD dwOffset;
+
+	if ((pSymbol->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
+		(pSymbol->get_addressSection(&dwISect) == S_OK) &&
+		(pSymbol->get_addressOffset(&dwOffset) == S_OK)) {
+		wprintf(L"[%08X][%04X:%08X]", dwRVA, dwISect, dwOffset);
+	}
+
+	if ((pSymbol->get_targetSection(&dwISect) == S_OK) &&
+		(pSymbol->get_targetOffset(&dwOffset) == S_OK) &&
+		(pSymbol->get_targetRelativeVirtualAddress(&dwRVA) == S_OK)) {
+		wprintf(L", target [%08X][%04X:%08X] ", dwRVA, dwISect, dwOffset);
+	}
+
+	else {
+		wprintf(L", target ");
+
+		PrintSimpleName(pSymbol);
+	}
+}
+
+void PrintSimpleSymbol(IDiaSymbol * pSymbol, DWORD dwIndent)
+{
+	DWORD dwSymTag;
+	BOOL B;
+
+	if (pSymbol->get_symTag(&dwSymTag) != S_OK) {
+		wprintf(L"ERROR - PrintSimpleSymbol get_symTag() failed\n");
+		return;
+	}
+#if 0
+	if (pSymbol->get_function(&B) != S_OK) {
+		wprintf(L"aaaaaaa %d", dwSymTag);
+		return;
+	}
+#endif
+
+	//PrintSymTag(dwSymTag);
+
+	switch (dwSymTag) {
+		case SymTagLabel:
+			PrintSimpleName(pSymbol);
+			break;
+		case SymTagFunction:
+			PrintSimpleName(pSymbol);
+			break;
+		case SymTagPublicSymbol:
+			PrintSimpleName(pSymbol);
+			break;
+		case SymTagThunk:
+			PrintSimpleThunk(pSymbol);
+			break;
+		default:
+			wprintf(L"WARNING Unprocessed symbol for %08X\n", dwSymTag);
+			break;
+
+	}
+}
+
 ////////////////////////////////////////////////////////////
 // Print the section contribution data: name, Sec::Off, length
-void PrintSecContribs(IDiaSectionContrib * pSegment)
+void PrintSecContribs(IDiaSession * pSession, IDiaSectionContrib * pSegment)
 {
 	DWORD dwRVA;
 	DWORD dwSect;
@@ -2137,18 +2220,118 @@ void PrintSecContribs(IDiaSectionContrib * pSegment)
 	DWORD dwLen;
 	IDiaSymbol * pCompiland;
 	BSTR bstrName;
+	BOOL dwExec;
+	BOOL dwCode;
+	BOOL dwComdat;
+	DWORD dwDataCRC;
 
 	if ((pSegment->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
 		(pSegment->get_addressSection(&dwSect) == S_OK) &&
 		(pSegment->get_addressOffset(&dwOffset) == S_OK) &&
 		(pSegment->get_length(&dwLen) == S_OK) &&
 		(pSegment->get_compiland(&pCompiland) == S_OK) &&
-		(pCompiland->get_name(&bstrName) == S_OK)) {
-		wprintf(L"  %08X  %04X:%08X  %08X  %s\n", dwRVA, dwSect, dwOffset, dwLen, bstrName);
+		(pCompiland->get_name(&bstrName) == S_OK) &&
+		(pSegment->get_code(&dwCode) == S_OK) &&
+		(pSegment->get_execute(&dwExec) == S_OK) &&
+		(pSegment->get_comdat(&dwComdat) == S_OK) &&
+		(pSegment->get_dataCrc(&dwDataCRC) == S_OK)) {
+	  //wprintf(L"  %08X  %04X:%08X  %08X  %s\n", dwRVA, dwSect, dwOffset, dwLen, bstrName);
+	  //pCompiland->Release();
 
-		pCompiland->Release();
+	  //SysFreeString(bstrName);
+	  //wprintf(L"%08X %08X %08X ", dwRVA, dwLen, dwDataCRC);
+
+#if 1
+		IDiaSymbol * pSymbol;
+		long displ = 0;
+		
+#if 0
+	// best case, mangled symbol
+		if (SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagPublicSymbol, &pSymbol, &displ))) {
+			if (pSymbol && displ == 0) {
+				PrintSimpleSymbol(pSymbol, 0);
+				pSymbol->Release();
+			} else {
+				  // fine can we get at least a label?
+				if (SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagLabel, &pSymbol, &displ))) {
+					if (pSymbol && displ == 0) {
+						PrintSimpleSymbol(pSymbol, 0);
+						pSymbol->Release();
+					} else {
+						// worst case, always demangled
+						if (SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagFunction, &pSymbol, &displ))) {
+							if (pSymbol && displ == 0) {
+								PrintSimpleSymbol(pSymbol, 0);
+								pSymbol->Release();
+							} else {
+								//wprintf(L"WARNING can't find symbol for %04X:%08X", dwSect, dwOffset);
+								wprintf(L"unk_%08X", dwRVA + 0x400000);
+							}
+						}
+					}
+				}
+			}
+		}
+#endif		
+		
+		bool try_again = true;
+
+		// best case, mangled symbol
+		if (try_again && SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagPublicSymbol, &pSymbol, &displ))) {
+			if (pSymbol) {
+				if (displ == 0) {
+					PrintSimpleSymbol(pSymbol, 0);
+					try_again = false;
+				}
+				pSymbol->Release();
+			}
+		}
+
+		// fine can we get at least a label?
+		if (try_again && SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagLabel, &pSymbol, &displ))) {
+			if (pSymbol) {
+				if (displ == 0) {
+					PrintSimpleSymbol(pSymbol, 0);
+					try_again = false;
+				}
+				pSymbol->Release();
+			}
+		}
+		// worst case, always demangled if exists
+		if (try_again && SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagFunction, &pSymbol, &displ))) {
+			if (pSymbol) {
+				if (displ == 0) {
+					PrintSimpleSymbol(pSymbol, 0);
+					try_again = false;
+				}
+				pSymbol->Release();
+			}
+		}
+		// ugh nothing found
+		if (try_again) {
+			//wprintf(L"WARNING can't find symbol for %04X:%08X", dwSect, dwOffset);
+			wprintf(L"unk_%08X", dwRVA + 0x400000);
+		}
+#endif
+
+		wprintf(L" %08X %08X //%08X %s", dwLen, dwDataCRC, dwRVA, bstrName);
 
 		SysFreeString(bstrName);
+#if 0
+		IDiaSymbol * pSymbol;
+		IDiaEnumSymbols * pEnumChildren;
+		if (SUCCEEDED(pSession->findChildrenExByAddr(NULL, SymTagNull, NULL, nsNone, dwSect, dwOffset, &pEnumChildren))) {
+			IDiaSymbol * pChild;
+			ULONG celt = 0;
+			while (SUCCEEDED(pEnumChildren->Next(1, &pChild, &celt)) && (celt == 1)) {
+				PrintSimpleSymbol(pChild, 0);
+
+				pChild->Release();
+			}
+
+			pEnumChildren->Release();
+		}
+#endif
 	}
 }
 
@@ -2322,3 +2505,111 @@ void PrintPropertyStorage(IDiaPropertyStorage * pPropertyStorage)
 		pEnumProps->Release();
 	}
 }
+
+//my addition
+#include "Dia2Dump.h"
+void PrintSpecificDword(IDiaSession * pSession, IDiaSectionContrib * pSegment, wchar_t * filename, wchar_t *name)
+{
+	const wchar_t * search = name;
+
+	IDiaEnumSymbols * pEnumSymbols;
+
+	if (FAILED(g_pGlobalSymbol->findChildren(SymTagData, search, nsRegularExpression, &pEnumSymbols))) {
+		return;// false;
+	}
+
+	IDiaSymbol * pSymbol;
+	ULONG celt = 0;
+
+	// read in exe into memory, todo this is inefficient
+	FILE * hFile;
+	_wfopen_s(&hFile, filename, L"rb");
+	if (hFile == nullptr) {
+		DebugBreak();
+	}
+	fseek(hFile, 0, SEEK_END);
+	int size = ftell(hFile);
+	fseek(hFile, 0, SEEK_SET);
+	char * buffer = (char *)malloc(size);
+	if (buffer == 0 || size == 0 || hFile == nullptr || fread(buffer, size, 1, hFile) == 0) {
+		DebugBreak();
+	}
+
+	fclose(hFile);
+	//return res;
+
+	LONG c;
+	pEnumSymbols->get_Count(&c);
+	fprintf(stderr, "Symbols found %d\n", c);
+
+	while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
+		//PrintGeneric(pSymbol);
+		ULONG addr;
+		BSTR sname;
+		if (SUCCEEDED(pSymbol->get_name(&sname))) {
+
+		}
+		if (SUCCEEDED(pSymbol->get_relativeVirtualAddress(&addr))) {
+			int dword = *(int *)(buffer + addr);
+			//wprintf(L"%s 0x%x (0x%x)\n", name, dword, addr);
+			wprintf(L"%s 0x%x\n", sname, dword);
+		}
+		SysFreeString(sname);
+
+		pSymbol->Release();
+	}
+
+	pEnumSymbols->Release();
+	free(buffer);
+#if 0
+	search = name;
+
+	if (FAILED(g_pGlobalSymbol->findChildren(SymTagEnum, search, nsRegularExpression, &pEnumSymbols))) {
+		return;// false;
+	}
+
+	celt = 0;
+
+	c;
+	pEnumSymbols->get_Count(&c);
+	fprintf(stderr, "Enums found %d\n", c);
+
+	while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
+		PrintUDT(pSymbol);
+		pSymbol->Release();
+	}
+
+	pEnumSymbols->Release();
+#endif
+
+	return;// bReturn;
+}
+
+//PdbTypeMatch addition
+void GetSymbolName(std::wstring & symbolName, IDiaSymbol * pSymbol)
+{
+	BSTR bstrName;
+	BSTR bstrUndName;
+
+	if (pSymbol->get_name(&bstrName) != S_OK) {
+		symbolName.clear();
+		return;
+	}
+
+	if (pSymbol->get_undecoratedName(&bstrUndName) == S_OK) {
+		if (wcscmp(bstrName, bstrUndName) == 0) {
+			symbolName = _bstr_t(bstrName);
+		} else {
+			symbolName = _bstr_t(bstrUndName);
+		}
+
+		SysFreeString(bstrUndName);
+	}
+
+	else {
+		symbolName = _bstr_t(bstrName);
+	}
+
+	SysFreeString(bstrName);
+}
+
