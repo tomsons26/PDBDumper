@@ -7,13 +7,13 @@ extern const wchar_t * const rgRegPpc[];
 extern const wchar_t * const rgRegSh[];
 extern const wchar_t * const rgRegArm[];
 
-typedef struct MapIa64Reg{
-    CV_HREG_e  iCvReg;
-    const wchar_t* wszRegName;
+typedef struct MapIa64Reg {
+	CV_HREG_e  iCvReg;
+	const wchar_t * wszRegName;
 }MapIa64Reg;
 extern const MapIa64Reg mpIa64regSz[];
-int cmpIa64regSz( const void* , const void* );
+int cmpIa64regSz(const void *, const void *);
 
 extern DWORD g_dwMachineType;
-const wchar_t* SzNameC7Reg( USHORT , DWORD );
-const wchar_t* SzNameC7Reg( USHORT );
+const wchar_t * SzNameC7Reg(USHORT, DWORD);
+const wchar_t * SzNameC7Reg(USHORT);

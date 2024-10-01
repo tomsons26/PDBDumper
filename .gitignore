@@ -1,0 +1,5 @@
+*.VC.*
+[Dd]ebug/
+[Rr]elease/
+.vs
+*.vcxproj.user

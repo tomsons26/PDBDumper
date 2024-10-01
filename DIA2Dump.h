@@ -1,13 +1,13 @@
 #include "dia2.h"
 
-extern const wchar_t *g_szFilename;
-extern IDiaDataSource *g_pDiaDataSource;
-extern IDiaSession *g_pDiaSession;
-extern IDiaSymbol *g_pGlobalSymbol;
+extern const wchar_t * g_szFilename;
+extern IDiaDataSource * g_pDiaDataSource;
+extern IDiaSession * g_pDiaSession;
+extern IDiaSymbol * g_pGlobalSymbol;
 extern DWORD g_dwMachineType;
 
 void PrintHelpOptions();
-bool ParseArg(int , wchar_t *[]);
+bool ParseArg(int, wchar_t * []);
 
 void Cleanup();
 bool LoadDataFromPdb(const wchar_t *, IDiaDataSource **, IDiaSession **, IDiaSymbol **);
@@ -51,5 +51,5 @@ HRESULT GetTable(IDiaSession *, REFIID, void **);
 
 ///////////////////////////////////////////////////////////////////
 // Functions defined in regs.cpp
-const wchar_t *SzNameC7Reg(USHORT, DWORD);
-const wchar_t *SzNameC7Reg(USHORT);
+const wchar_t * SzNameC7Reg(USHORT, DWORD);
+const wchar_t * SzNameC7Reg(USHORT);
