@@ -19,6 +19,10 @@
 #include "regs.h"
 #include "PrintSymbol.h"
 
+#include <algorithm>
+#include <Shlwapi.h>
+#include <vector>
+
 // Basic types
 const wchar_t * const rgBaseType[] =
 {
@@ -1980,26 +1984,33 @@ void PrintFunctionType(IDiaSymbol * pSymbol)
 
 ////////////////////////////////////////////////////////////
 //
-void PrintSourceFile(IDiaSourceFile * pSource)
+bool PrintSourceFile(IDiaSourceFile * pSource, wchar_t const * szFileName)
 {
 	BSTR bstrSourceName;
 
 	if (pSource->get_fileName(&bstrSourceName) == S_OK) {
-		wprintf(L"\t%s", bstrSourceName);
-
+		if (szFileName != nullptr && StrStrI(bstrSourceName, szFileName) == nullptr) {
+			SysFreeString(bstrSourceName);
+			wprintf(L"//Ignored %s\n", bstrSourceName);
+			return false;
+		}
+		//wprintf(L"\t%s", bstrSourceName);
+		wprintf(L"Source File = %s\n", bstrSourceName);
 		SysFreeString(bstrSourceName);
 	}
 
 	else {
 		wprintf(L"ERROR - PrintSourceFile() get_fileName");
-		return;
+		return false;
 	}
 
 	BYTE checksum[256];
 	DWORD cbChecksum = sizeof(checksum);
 
 	if (pSource->get_checksum(cbChecksum, &cbChecksum, checksum) == S_OK) {
-		wprintf(L" (");
+		//wprintf(L" (");
+
+		wprintf(L"File Hash = ");
 
 		DWORD checksumType;
 
@@ -2031,8 +2042,9 @@ void PrintSourceFile(IDiaSourceFile * pSource)
 			wprintf(L"%02X", checksum[ib]);
 		}
 
-		wprintf(L")");
+		//wprintf(L")");
 	}
+	return true;
 }
 
 ////////////////////////////////////////////////////////////
@@ -2066,7 +2078,7 @@ void PrintLines(IDiaSession * pSession, IDiaSymbol * pFunction)
 
 	if (pFunction->get_relativeVirtualAddress(&dwRVA) == S_OK) {
 		if (SUCCEEDED(pSession->findLinesByRVA(dwRVA, static_cast<DWORD>(ulLength), &pLines))) {
-			PrintLines(pLines);
+			PrintLines(pLines, nullptr);
 			pLines->Release();
 		}
 	}
@@ -2078,16 +2090,42 @@ void PrintLines(IDiaSession * pSession, IDiaSymbol * pFunction)
 		if ((pFunction->get_addressSection(&dwSect) == S_OK) &&
 			(pFunction->get_addressOffset(&dwOffset) == S_OK)) {
 			if (SUCCEEDED(pSession->findLinesByAddr(dwSect, dwOffset, static_cast<DWORD>(ulLength), &pLines))) {
-				PrintLines(pLines);
+				PrintLines(pLines, nullptr);
 				pLines->Release();
 			}
 		}
 	}
 }
 
+extern IDiaSession * g_pDiaSession;
+
+struct LineInfo
+{
+	std::wstring name;
+	DWORD symIndex;
+	DWORD srcIndex;
+	DWORD number;
+	DWORD length;
+	DWORD address;
+	DWORD displ;
+};
+
+bool compareByLineNums(const LineInfo & a, const LineInfo & b)
+{
+	if (a.number == b.number) {
+		//line numbers are same so we need to sort by address
+		return a.address < b.address;
+	}
+	return a.number < b.number;
+}
+
+std::vector<LineInfo> _linenums;
+
+extern ULONGLONG g_dwloadAddress;
+
 ////////////////////////////////////////////////////////////
 //
-void PrintLines(IDiaEnumLineNumbers * pLines)
+void PrintLines(IDiaEnumLineNumbers * pLines, wchar_t const * szFileName)
 {
 	IDiaLineNumber * pLine;
 	DWORD celt;
@@ -2096,34 +2134,103 @@ void PrintLines(IDiaEnumLineNumbers * pLines)
 	DWORD dwOffset;
 	DWORD dwLinenum;
 	DWORD dwSrcId;
-	DWORD dwLength;
+	DWORD dwLength = 0;
+
+	ULONGLONG dwVA;
+	IDiaSymbol *compiland;
+	DWORD dwLast = -1;
 
 	DWORD dwSrcIdLast = (DWORD)(-1);
 
 	while (SUCCEEDED(pLines->Next(1, &pLine, &celt)) && (celt == 1)) {
-		if ((pLine->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
+		if ((pLine->get_compiland(&compiland) == S_OK) &&
+			(pLine->get_virtualAddress(&dwVA) == S_OK) &&
+			(pLine->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
 			(pLine->get_addressSection(&dwSeg) == S_OK) &&
 			(pLine->get_addressOffset(&dwOffset) == S_OK) &&
 			(pLine->get_lineNumber(&dwLinenum) == S_OK) &&
 			(pLine->get_sourceFileId(&dwSrcId) == S_OK) &&
 			(pLine->get_length(&dwLength) == S_OK)) {
-			wprintf(L"\tline %u at [%08X][%04X:%08X], len = 0x%X", dwLinenum, dwRVA, dwSeg, dwOffset, dwLength);
+			//wprintf(L"\tline %u at [%08X][%04X:%08X], len = 0x%X", dwLinenum, dwRVA, dwSeg, dwOffset, dwLength);
 
 			if (dwSrcId != dwSrcIdLast) {
 				IDiaSourceFile * pSource;
 
 				if (pLine->get_sourceFile(&pSource) == S_OK) {
-					PrintSourceFile(pSource);
-
+					if (!PrintSourceFile(pSource, szFileName)) {
+						pSource->Release();
+						pLine->Release();
+						return;
+					}
+					putwchar(L'\n');
 					dwSrcIdLast = dwSrcId;
 
 					pSource->Release();
 				}
 			}
 
+			IDiaSymbol *sym;
+			LONG disp;
+			g_pDiaSession->findSymbolByRVAEx(dwRVA, SymTagFunction, &sym, &disp);
+			std::wstring name(L"NO SYMBOL FOUND");
+			DWORD idx = 0;
+			if (sym) {
+				if (sym->get_symIndexId(&idx) == S_OK && dwLast != idx) {
+					GetSymbolName(name, sym);
+					//wprintf(L"'%ls' + %d\n", name.c_str(), disp);
+					dwLast = idx;
+				}
+			}
+
+			LineInfo temp;
+			temp.name = name;
+			temp.symIndex = dwLast;
+			temp.srcIndex = dwSrcId;
+			temp.number = dwLinenum;
+			temp.length = dwLength;
+			temp.address = dwRVA;
+			temp.displ = disp;
+			_linenums.push_back(temp);
+
+			//wprintf(L"\t %ls statement:%hs line %u:%u:%u at [%08X][%04X:%08X], len = %d", name.c_str(), (dwStatem ? "TRUE" : "FALSE"), dwLinenum, dwLinenumEnd, dwColnum, dwRVA + g_dwloadAddress, dwSeg, dwOffset, dwLength);
+			//wprintf(L"'%ls' + %d - L:%04d //[%08X][%04X:%08X][%04d]", name.c_str(), disp, dwLinenum, dwRVA + g_dwloadAddress, dwSeg, dwOffset, dwLength);
+			//wprintf(L"Line %04d //0x%08X", dwLinenum, dwRVA + g_dwloadAddress);
+
+			if (sym) {
+				sym->Release();
+			}
+			
+
 			pLine->Release();
 
-			putwchar(L'\n');
+			//putwchar(L'\n');
+		}
+	}
+
+	//sort by line numbers
+	std::sort(_linenums.begin(), _linenums.end(), compareByLineNums);
+
+	for(int pass = 0; pass < 2; pass++) {
+		// to make things easier to check use delta of the line number from start of function
+		int lidx = 0;
+		int sidx = -1;
+
+		for (auto it : _linenums)
+		{
+			LineInfo *i = (&it);
+			if (sidx != i->symIndex && i->displ == 0) {
+				// new function, print its name
+				wprintf(L"'%ls' + %d\n", i->name.c_str(), i->displ);
+				sidx = i->symIndex;
+				lidx = i->number;
+			}
+			if (pass == 0) {
+				//wprintf(L"	Line %04d:%04d // %04d // 0x%08X\n", i->number - lidx, i->length, i->number, (i->address + (DWORD)g_dwloadAddress));
+				wprintf(L"	%04d:%04d // %04d // 0x%08X\n", i->length, i->number - lidx, i->number, (i->address + (DWORD)g_dwloadAddress));
+			} else {
+				wprintf(L"set_cmt(0x%08X, \"line %d\", 1);\n", (i->address + (DWORD)g_dwloadAddress), i->number);
+			}
+			
 		}
 	}
 }
@@ -2265,7 +2372,7 @@ void PrintSecContribs(IDiaSession * pSession, IDiaSectionContrib * pSegment)
 								pSymbol->Release();
 							} else {
 								//wprintf(L"WARNING can't find symbol for %04X:%08X", dwSect, dwOffset);
-								wprintf(L"unk_%08X", dwRVA + 0x400000);
+								wprintf(L"unk_%08X", dwRVA + g_dwloadAddress);
 							}
 						}
 					}
@@ -2310,7 +2417,7 @@ void PrintSecContribs(IDiaSession * pSession, IDiaSectionContrib * pSegment)
 		// ugh nothing found
 		if (try_again) {
 			//wprintf(L"WARNING can't find symbol for %04X:%08X", dwSect, dwOffset);
-			wprintf(L"unk_%08X", dwRVA + 0x400000);
+			wprintf(L"unk_%08X", dwRVA + g_dwloadAddress);
 		}
 #endif
 

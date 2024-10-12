@@ -23,6 +23,7 @@ IDiaDataSource * g_pDiaDataSource;
 IDiaSession * g_pDiaSession;
 IDiaSymbol * g_pGlobalSymbol;
 DWORD g_dwMachineType = CV_CFL_80386;
+ULONGLONG g_dwloadAddress = 0x400000;
 
 #include <fstream>
 #include <iostream>
@@ -1124,7 +1125,7 @@ bool DumpAllFiles(IDiaSession * pSession, IDiaSymbol * pGlobal)
 			IDiaSourceFile * pSourceFile;
 
 			while (SUCCEEDED(pEnumSourceFiles->Next(1, &pSourceFile, &celt)) && (celt == 1)) {
-				PrintSourceFile(pSourceFile);
+				PrintSourceFile(pSourceFile, nullptr);
 				putwchar(L'\n');
 
 				pSourceFile->Release();
@@ -1233,7 +1234,7 @@ bool DumpAllLines(IDiaSession * pSession, DWORD dwRVA, DWORD dwRange)
 		return false;
 	}
 
-	PrintLines(pLines);
+	PrintLines(pLines, nullptr);
 
 	pLines->Release();
 
@@ -2077,7 +2078,7 @@ bool DumpLines(IDiaSession * pSession, DWORD dwRVA)
 		return false;
 	}
 
-	PrintLines(pLines);
+	PrintLines(pLines, nullptr);
 
 	pLines->Release();
 
@@ -2275,20 +2276,20 @@ bool DumpLinesForSourceFile(IDiaSession * pSession, const wchar_t * szFileName, 
 				BSTR bstrName;
 
 				if (pCompiland->get_name(&bstrName) == S_OK) {
-					wprintf(L"Compiland = %s\n", bstrName);
+					wprintf(L"//Compiland = %s\n", bstrName);
 
 					SysFreeString(bstrName);
 				}
 
 				else {
-					wprintf(L"Compiland = (???)\n");
+					wprintf(L"//Compiland = (???)\n");
 				}
 
 				IDiaEnumLineNumbers * pLines;
 
 				if (dwLine != 0) {
 					if (SUCCEEDED(pSession->findLinesByLinenum(pCompiland, pSrcFile, dwLine, 0, &pLines))) {
-						PrintLines(pLines);
+						PrintLines(pLines, szFileName);
 
 						pLines->Release();
 					}
@@ -2296,7 +2297,7 @@ bool DumpLinesForSourceFile(IDiaSession * pSession, const wchar_t * szFileName, 
 
 				else {
 					if (SUCCEEDED(pSession->findLines(pCompiland, pSrcFile, &pLines))) {
-						PrintLines(pLines);
+						PrintLines(pLines, szFileName);
 
 						pLines->Release();
 					}
