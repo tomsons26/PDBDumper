@@ -20,6 +20,7 @@
 #include "PrintSymbol.h"
 
 #include <algorithm>
+#include <map>
 #include <Shlwapi.h>
 #include <vector>
 
@@ -2101,13 +2102,17 @@ extern IDiaSession * g_pDiaSession;
 
 struct LineInfo
 {
-	std::wstring name;
-	DWORD symIndex;
-	DWORD srcIndex;
 	DWORD number;
 	DWORD length;
 	DWORD address;
 	DWORD displ;
+};
+
+struct DataInfo
+{
+	std::wstring name;
+	DWORD srcIndex;
+	std::vector<LineInfo> lineInfo;
 };
 
 bool compareByLineNums(const LineInfo & a, const LineInfo & b)
@@ -2119,7 +2124,7 @@ bool compareByLineNums(const LineInfo & a, const LineInfo & b)
 	return a.number < b.number;
 }
 
-std::vector<LineInfo> _linenums;
+std::map<DWORD,DataInfo> datainfo;
 
 extern ULONGLONG g_dwloadAddress;
 
@@ -2138,13 +2143,12 @@ void PrintLines(IDiaEnumLineNumbers * pLines, wchar_t const * szFileName)
 
 	ULONGLONG dwVA;
 	IDiaSymbol *compiland;
-	DWORD dwLast = -1;
+	std::wstring lname;
 
 	DWORD dwSrcIdLast = (DWORD)(-1);
 
 	while (SUCCEEDED(pLines->Next(1, &pLine, &celt)) && (celt == 1)) {
-		if ((pLine->get_compiland(&compiland) == S_OK) &&
-			(pLine->get_virtualAddress(&dwVA) == S_OK) &&
+		if ((pLine->get_virtualAddress(&dwVA) == S_OK) &&
 			(pLine->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
 			(pLine->get_addressSection(&dwSeg) == S_OK) &&
 			(pLine->get_addressOffset(&dwOffset) == S_OK) &&
@@ -2170,27 +2174,46 @@ void PrintLines(IDiaEnumLineNumbers * pLines, wchar_t const * szFileName)
 			}
 
 			IDiaSymbol *sym;
-			LONG disp;
-			g_pDiaSession->findSymbolByRVAEx(dwRVA, SymTagFunction, &sym, &disp);
-			std::wstring name(L"NO SYMBOL FOUND");
-			DWORD idx = 0;
-			if (sym) {
-				if (sym->get_symIndexId(&idx) == S_OK && dwLast != idx) {
+			LONG disp = -1;
+			g_pDiaSession->findSymbolByRVAEx(dwRVA, SymTagNull, &sym, &disp);
+			std::wstring name;
+
+			if (sym != nullptr) {
+				if (disp == 0) {
 					GetSymbolName(name, sym);
 					//wprintf(L"'%ls' + %d\n", name.c_str(), disp);
-					dwLast = idx;
+				}
+
+				if (!name.empty() && lname == name) {
+#if 0
+					DWORD t;
+					sym->get_symTag(&t);
+					wprintf(L"Strange thing %d %x %s\n", disp, (dwRVA + (DWORD)g_dwloadAddress), rgTags[t]);
+#endif
+					// dunno whats going on here but these duplicate names aren't useful..
+					name.clear();
 				}
 			}
 
-			LineInfo temp;
+			DataInfo temp;
 			temp.name = name;
-			temp.symIndex = dwLast;
 			temp.srcIndex = dwSrcId;
-			temp.number = dwLinenum;
-			temp.length = dwLength;
-			temp.address = dwRVA;
-			temp.displ = disp;
-			_linenums.push_back(temp);
+			datainfo[dwLinenum] = temp;
+
+			auto data = datainfo.find(dwLinenum);
+			if (data != datainfo.end()) {
+				LineInfo ltemp;
+				ltemp.number = dwLinenum;
+				ltemp.length = dwLength;
+				ltemp.address = dwRVA;
+				ltemp.displ = disp;
+				data->second.lineInfo.push_back(ltemp);
+			} else {
+				wprintf(L"Can't find address %x in map\n", dwRVA);
+			}
+
+			// store last symbol to track weird duplicates
+			lname = name;
 
 			//wprintf(L"\t %ls statement:%hs line %u:%u:%u at [%08X][%04X:%08X], len = %d", name.c_str(), (dwStatem ? "TRUE" : "FALSE"), dwLinenum, dwLinenumEnd, dwColnum, dwRVA + g_dwloadAddress, dwSeg, dwOffset, dwLength);
 			//wprintf(L"'%ls' + %d - L:%04d //[%08X][%04X:%08X][%04d]", name.c_str(), disp, dwLinenum, dwRVA + g_dwloadAddress, dwSeg, dwOffset, dwLength);
@@ -2208,28 +2231,30 @@ void PrintLines(IDiaEnumLineNumbers * pLines, wchar_t const * szFileName)
 	}
 
 	//sort by line numbers
-	std::sort(_linenums.begin(), _linenums.end(), compareByLineNums);
+	//std::sort(_linenums.begin(), _linenums.end(), compareByLineNums);
 
 	for(int pass = 0; pass < 2; pass++) {
 		// to make things easier to check use delta of the line number from start of function
 		int lidx = 0;
-		int sidx = -1;
 
-		for (auto it : _linenums)
+		for (auto it : datainfo)
 		{
-			LineInfo *i = (&it);
-			if (sidx != i->symIndex && i->displ == 0) {
-				// new function, print its name
-				wprintf(L"'%ls' + %d\n", i->name.c_str(), i->displ);
-				sidx = i->symIndex;
-				lidx = i->number;
-			}
-			if (pass == 0) {
-				//wprintf(L"	Line %04d:%04d // %04d // 0x%08X\n", i->number - lidx, i->length, i->number, (i->address + (DWORD)g_dwloadAddress));
-				wprintf(L"	%04d:%04d // %04d // 0x%08X\n", i->length, i->number - lidx, i->number, (i->address + (DWORD)g_dwloadAddress));
-			} else {
-				wprintf(L"set_cmt(0x%08X, \"line %d\", 1);\n", (i->address + (DWORD)g_dwloadAddress), i->number);
-			}
+			DataInfo &di = it.second;
+			for (LineInfo &i : di.lineInfo) {
+				if (i.displ == 0 && !di.name.empty()) {
+					// cludge for first symbol which would just print the line number, print it as -1
+					int l = lidx == 0 ? -1 : i.number - lidx;
+					// new function, print its name and line number delta to last symbol line
+					wprintf(L"'%ls' + %d\n", di.name.c_str(), l);
+				}
+				if (pass == 0) {
+					//wprintf(L"	Line %04d:%04d // %04d // 0x%08X\n", i->number - lidx, i->length, i->number, (i->address + (DWORD)g_dwloadAddress));
+					wprintf(L"	%04d:%04d // %04d // 0x%08X\n", i.length, i.number - lidx, i.number, (i.address + (DWORD)g_dwloadAddress));
+				} else {
+					wprintf(L"set_cmt(0x%08X, \"line %d\", 0);\n", (i.address + (DWORD)g_dwloadAddress), i.number);
+				}
+				lidx = i.number;
+		}
 			
 		}
 	}
@@ -2298,6 +2323,9 @@ void PrintSimpleSymbol(IDiaSymbol * pSymbol, DWORD dwIndent)
 	//PrintSymTag(dwSymTag);
 
 	switch (dwSymTag) {
+		case SymTagData:
+			PrintSimpleName(pSymbol);
+			break;
 		case SymTagLabel:
 			PrintSimpleName(pSymbol);
 			break;
@@ -2414,14 +2442,25 @@ void PrintSecContribs(IDiaSession * pSession, IDiaSectionContrib * pSegment)
 				pSymbol->Release();
 			}
 		}
+
+		// worst case, always demangled if exists
+		if (try_again && SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagData, &pSymbol, &displ))) {
+			if (pSymbol) {
+				if (displ == 0) {
+					PrintSimpleSymbol(pSymbol, 0);
+					try_again = false;
+				}
+				pSymbol->Release();
+			}
+		}
 		// ugh nothing found
 		if (try_again) {
 			//wprintf(L"WARNING can't find symbol for %04X:%08X", dwSect, dwOffset);
-			wprintf(L"unk_%08X", dwRVA + g_dwloadAddress);
+			wprintf(L"unk_%08X", dwRVA + (DWORD)g_dwloadAddress);
 		}
 #endif
 
-		wprintf(L" %08X %08X //%08X %s", dwLen, dwDataCRC, dwRVA, bstrName);
+		wprintf(L" %08X %08X //%08X %s", dwLen, dwDataCRC, (dwRVA + (DWORD)g_dwloadAddress), bstrName);
 
 		SysFreeString(bstrName);
 #if 0

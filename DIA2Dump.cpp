@@ -62,7 +62,7 @@ int wmain(int argc, wchar_t * argv[])
 	fclose(pFile);
 
 	if (argv[1] != nullptr && argv[2] != nullptr) {
-		if (wcsstr(argv[1], L".pdb") != nullptr && wcsstr(argv[2], L".pdb") != nullptr || wcsstr(argv[1], L"-type")) {
+		if (wcsstr(argv[1], L".pdb") != nullptr && wcsstr(argv[2], L".pdb") != nullptr || wcsstr(argv[1], L"-ptype")) {
 			wprintf(L"Comparing PDBs\n");
 			return wmain2(argc, argv);
 		}
@@ -2629,7 +2629,7 @@ int __cdecl wmain2(int argc, wchar_t * argv[])
 		return -1;
 	}
 
-	if (!_wcsicmp(argv[1], L"-type")) {
+	if (!_wcsicmp(argv[1], L"-ptype")) {
 
 	  // -type <symbolname> <pdbfilename>: dump this type in detail
 
