@@ -1283,7 +1283,7 @@ bool DumpAllSecContribs(IDiaSession * pSession)
 		//}
 		PrintSecContribs(pSession, pSecContrib);
 		pSecContrib->Release();
-		putwchar(L'\n');
+		//putwchar(L'\n');
 	}
 
 	pEnumSecContribs->Release();

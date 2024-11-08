@@ -2271,8 +2271,23 @@ void PrintSimpleName(IDiaSymbol * pSymbol)
 	std::wstring n = bstrName;
 	SysFreeString(bstrName);
 
+#if 0
+	//filter rtti and cstrings
+	if (n.find(L"??_R", 0) != std::string::npos || n.find(L"??_C", 0) != std::string::npos) {
+		return;
+	}
+
+	//fliter std crap
+	if (n.find(L"??$_M_allocate_and_copy", 0) != std::string::npos ||
+		n.find(L"??$__copy", 0) != std::string::npos ||
+		n.find(L"??$__pop_heap", 0) != std::string::npos ||
+		n.find(L"??$__un", 0) != std::string::npos) {
+		return;
+	}
+#endif
+
 	// unify sdtor and vdtor since they share addresses
-	if (n.find(L"??_E") != std::string::npos || n.find(L"??_G") != std::string::npos) {
+	if (n.find(L"??_E", 0) != std::string::npos || n.find(L"??_G", 0) != std::string::npos) {
 		n[3] = 'G';
 	}
 
@@ -2411,6 +2426,9 @@ void PrintSecContribs(IDiaSession * pSession, IDiaSectionContrib * pSegment)
 		
 		bool try_again = true;
 
+		wprintf(L"%08X %08X //", dwDataCRC, dwLen);
+
+
 		// best case, mangled symbol
 		if (try_again && SUCCEEDED(pSession->findSymbolByRVAEx(dwRVA, SymTagPublicSymbol, &pSymbol, &displ))) {
 			if (pSymbol) {
@@ -2456,11 +2474,12 @@ void PrintSecContribs(IDiaSession * pSession, IDiaSectionContrib * pSegment)
 		// ugh nothing found
 		if (try_again) {
 			//wprintf(L"WARNING can't find symbol for %04X:%08X", dwSect, dwOffset);
-			wprintf(L"unk_%08X", dwRVA + (DWORD)g_dwloadAddress);
+			wprintf(L"'symbol not found'");
 		}
 #endif
 
-		wprintf(L" %08X %08X //%08X %s", dwLen, dwDataCRC, (dwRVA + (DWORD)g_dwloadAddress), bstrName);
+		//wprintf(L" %08X %08X //%08X %s\n", dwLen, dwDataCRC, (dwRVA + (DWORD)g_dwloadAddress), bstrName);
+		wprintf(L" %08X %s\n", (dwRVA + (DWORD)g_dwloadAddress), bstrName);
 
 		SysFreeString(bstrName);
 #if 0
