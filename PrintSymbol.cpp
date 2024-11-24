@@ -1922,10 +1922,47 @@ void PrintTypeInDetail(IDiaSymbol * pSymbol, DWORD dwIndent)
 //
 void PrintFunctionType(IDiaSymbol * pSymbol)
 {
+
+	BOOL bIntro = FALSE;
+
+	if ((pSymbol->get_intro(&bIntro) == S_OK) && bIntro) {
+		wprintf(L"[INTRO] ");
+	}
+
+	BOOL bCompGen = FALSE;
+
+	if ((pSymbol->get_compilerGenerated(&bCompGen) == S_OK) && bCompGen) {
+		wprintf(L"[COMPGEN] ");
+	}
+
+	BOOL bWasInlined = FALSE;
+
+	if ((pSymbol->get_wasInlined(&bWasInlined) == S_OK) && bWasInlined) {
+		wprintf(L"[INLINED] ");
+	}
+
+	BOOL bPure = FALSE;
+
+	if ((pSymbol->get_pure(&bPure) == S_OK) && bPure) {
+		wprintf(L"[PURECALL] ");
+	}
+
 	DWORD dwAccess = 0;
 
 	if (pSymbol->get_access(&dwAccess) == S_OK) {
 		wprintf(L"%s ", SafeDRef(rgAccess, dwAccess));
+	}
+
+	BOOL bIsInline = FALSE;
+
+	if ((pSymbol->get_inlSpec(&bIsInline) == S_OK) && bIsInline) {
+		wprintf(L"inline ");
+	}
+
+	BOOL bIsNoInline = FALSE;
+
+	if ((pSymbol->get_noInline(&bIsNoInline) == S_OK) && bIsNoInline) {
+		wprintf(L"noinline ");
 	}
 
 	BOOL bIsStatic = FALSE;
