@@ -1259,7 +1259,8 @@ void PrintLocation(IDiaSymbol * pSymbol)
 			if ((pSymbol->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
 				(pSymbol->get_addressSection(&dwSect) == S_OK) &&
 				(pSymbol->get_addressOffset(&dwOff) == S_OK)) {
-				wprintf(L"%s, [%08X][%04X:%08X]", SafeDRef(rgLocationTypeString, dwLocType), dwRVA, dwSect, dwOff);
+				//wprintf(L"%s, [%08X][%04X:%08X]", SafeDRef(rgLocationTypeString, dwLocType), dwRVA, dwSect, dwOff);
+				wprintf(L"%s, ", SafeDRef(rgLocationTypeString, dwLocType));
 			}
 			break;
 
@@ -1808,9 +1809,12 @@ void PrintTypeInDetail(IDiaSymbol * pSymbol, DWORD dwIndent)
 			}
 			break;
 
-		case SymTagTypedef:
 		case SymTagVTable:
 			PrintSymbolType(pSymbol);
+			break;
+
+		case SymTagTypedef:
+			PrintUDT(pSymbol);
 			break;
 
 		case SymTagEnum:
@@ -1930,10 +1934,18 @@ void PrintFunctionType(IDiaSymbol * pSymbol)
 		wprintf(L"static ");
 	}
 
+	BOOL bIsVirtual = FALSE;
+
+	if ((pSymbol->get_virtual(&bIsVirtual) == S_OK) && bIsVirtual) {
+		wprintf(L"virtual ");
+	}
+
 	IDiaSymbol * pFuncType;
 
 	if (pSymbol->get_type(&pFuncType) == S_OK) {
 		IDiaSymbol * pReturnType;
+
+		BOOL bIsConst = FALSE;
 
 		if (pFuncType->get_type(&pReturnType) == S_OK) {
 			PrintType(pReturnType);
@@ -1942,7 +1954,18 @@ void PrintFunctionType(IDiaSymbol * pSymbol)
 			BSTR bstrName;
 
 			if (pSymbol->get_name(&bstrName) == S_OK) {
-				wprintf(L"%s", bstrName);
+				wchar_t* name = wcsrchr(bstrName, ':');
+				
+				if (name)
+				{
+					name++;
+				}
+				else
+				{
+					name = bstrName;
+				}
+				
+				wprintf(L"%s", name);
 
 				SysFreeString(bstrName);
 			}

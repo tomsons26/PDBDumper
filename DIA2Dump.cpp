@@ -982,11 +982,22 @@ bool DumpAllUDTs(IDiaSymbol * pGlobal)
 
 	IDiaSymbol * pSymbol;
 	ULONG celt = 0;
+	std::multimap<std::wstring, IDiaSymbol*> types;
 
 	while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
-		PrintTypeInDetail(pSymbol, 0);
+		BSTR bstrName;
+		if (pSymbol->get_name(&bstrName) != S_OK) {
+			break;
+		}
 
-		pSymbol->Release();
+		types.insert(std::make_pair(bstrName, pSymbol));
+		SysFreeString(bstrName);
+	}
+
+	for (auto& sym : types)
+	{
+		PrintTypeInDetail(sym.second, 0);
+		sym.second->Release();
 	}
 
 	pEnumSymbols->Release();
@@ -1014,10 +1025,22 @@ bool DumpAllEnums(IDiaSymbol * pGlobal)
 	IDiaSymbol * pSymbol;
 	ULONG celt = 0;
 
-	while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
-		PrintTypeInDetail(pSymbol, 0);
+	std::multimap<std::wstring, IDiaSymbol*> types;
 
-		pSymbol->Release();
+	while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
+		BSTR bstrName;
+		if (pSymbol->get_name(&bstrName) != S_OK) {
+			break;
+		}
+
+		types.insert(std::make_pair(bstrName, pSymbol));
+		SysFreeString(bstrName);
+	}
+
+	for (auto& sym : types)
+	{
+		PrintTypeInDetail(sym.second, 0);
+		sym.second->Release();
 	}
 
 	pEnumSymbols->Release();
@@ -1045,10 +1068,22 @@ bool DumpAllTypedefs(IDiaSymbol * pGlobal)
 	IDiaSymbol * pSymbol;
 	ULONG celt = 0;
 
-	while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
-		PrintTypeInDetail(pSymbol, 0);
+	std::multimap<std::wstring, IDiaSymbol*> types;
 
-		pSymbol->Release();
+	while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
+		BSTR bstrName;
+		if (pSymbol->get_name(&bstrName) != S_OK) {
+			break;
+		}
+
+		types.insert(std::make_pair(bstrName, pSymbol));
+		SysFreeString(bstrName);
+	}
+
+	for (auto& sym : types)
+	{
+		PrintTypeInDetail(sym.second, 0);
+		sym.second->Release();
 	}
 
 	pEnumSymbols->Release();
