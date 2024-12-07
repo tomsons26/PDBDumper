@@ -278,6 +278,15 @@ bool ParseArg(int argc, wchar_t * argv[])
 		bReturn = bReturn && ParseArg(argc, &argv[iCount]);
 	}
 
+	else if (!_wcsicmp(argv[0], L"-tc")) {
+	  // -g                : print all the globals
+
+		iCount = 1;
+		bReturn = bReturn && DumpAllTypedefsAndConsts(g_pGlobalSymbol);
+		argc -= iCount;
+		bReturn = bReturn && ParseArg(argc, &argv[iCount]);
+	}
+
 	else if (!_wcsicmp(argv[0], L"-t")) {
 	  // -t                : print all the types
 
@@ -940,6 +949,50 @@ bool DumpAllGlobals(IDiaSymbol * pGlobal)
 
 		else {
 			wprintf(L"ERROR - DumpAllGlobals() returned no symbols\n");
+
+			return false;
+		}
+	}
+
+	putwchar(L'\n');
+
+	return true;
+}
+
+
+////////////////////////////////////////////////////////////
+// Dump all the typedef and constant symbols - SymTagTypedef,
+//  SymTagData
+//
+bool DumpAllTypedefsAndConsts(IDiaSymbol * pGlobal)
+{
+	IDiaEnumSymbols * pEnumSymbols;
+	IDiaSymbol * pSymbol;
+	enum SymTagEnum dwSymTags[] = {SymTagTypedef, SymTagData};
+	ULONG celt = 0;
+
+	wprintf(L"\n\n*** TYPEDEFS AND CONSTANTS\n\n");
+
+	for (size_t i = 0; i < _countof(dwSymTags); i++, pEnumSymbols = NULL) {
+		if (SUCCEEDED(pGlobal->findChildrenEx(dwSymTags[i], NULL, nsNone, &pEnumSymbols))) {
+			while (SUCCEEDED(pEnumSymbols->Next(1, &pSymbol, &celt)) && (celt == 1)) {
+				PrintSymbol(pSymbol, 0);
+#if 0
+				IDiaSymbol * pLSymbol;
+				if (pSymbol->get_coffGroup(&pLSymbol) == S_OK) {
+					wprintf(L"    ");
+					PrintSymbol(pLSymbol, 4);
+					pLSymbol->Release();
+				}
+#endif
+				pSymbol->Release();
+			}
+
+			pEnumSymbols->Release();
+		}
+
+		else {
+			wprintf(L"ERROR - DumpAllTypedefsAndConsts() returned no symbols\n");
 
 			return false;
 		}

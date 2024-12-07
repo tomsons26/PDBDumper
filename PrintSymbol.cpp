@@ -483,6 +483,18 @@ const wchar_t * const rgLocationTypeString[] =
 	L"RegRelAliasIndir"
 };
 
+////////////////////////////////////////////////////////////
+// Cleanup symbol from various inconsistent junk
+//
+void CleanupSymbol(std::wstring &str)
+{
+	// hacky way to remove hash from mangled symbol
+	auto pos = str.find(L"A0x");
+	while (pos != std::wstring::npos) {
+		str.replace(pos + 3, 8, L"xxxxxxxx");
+		pos = str.find(L"A0x", pos + 1);
+	}
+}
 
 ////////////////////////////////////////////////////////////
 // Print a public symbol info: name, VA, RVA, SEG:OFF
@@ -738,7 +750,7 @@ void PrintSymbol(IDiaSymbol * pSymbol, DWORD dwIndent)
 
 		case SymTagFunction:
 		case SymTagBlock:
-			PrintLocation(pSymbol);
+			PrintUndName(pSymbol);
 
 			if (pSymbol->get_length(&ulLen) == S_OK) {
 				wprintf(L", len = %08X, ", (ULONG)ulLen);
@@ -752,7 +764,7 @@ void PrintSymbol(IDiaSymbol * pSymbol, DWORD dwIndent)
 				}
 			}
 
-			PrintUndName(pSymbol);
+			PrintLocation(pSymbol);
 			putwchar(L'\n');
 
 			if (dwSymTag == SymTagFunction) {
@@ -859,9 +871,9 @@ void PrintSymbol(IDiaSymbol * pSymbol, DWORD dwIndent)
 			break;
 
 		case SymTagLabel:
-			PrintLocation(pSymbol);
-			wprintf(L", ");
 			PrintName(pSymbol);
+			wprintf(L", ");
+			PrintLocation(pSymbol);
 			break;
 
 		case SymTagEnum:
@@ -958,18 +970,24 @@ void PrintName(IDiaSymbol * pSymbol)
 
 	if (pSymbol->get_undecoratedName(&bstrUndName) == S_OK) {
 		if (wcscmp(bstrName, bstrUndName) == 0) {
-			wprintf(L"%s", bstrName);
+			std::wstring str = bstrName;
+			CleanupSymbol(str);
+			wprintf(L"%s", str.c_str());
 		}
 
 		else {
-			wprintf(L"%s(%s)", bstrUndName, bstrName);
+			std::wstring str = bstrName;
+			CleanupSymbol(str);
+			wprintf(L"%s(%s)", bstrUndName, str.c_str());
 		}
 
 		SysFreeString(bstrUndName);
 	}
 
 	else {
-		wprintf(L"%s", bstrName);
+		std::wstring str = bstrName;
+		CleanupSymbol(str);
+		wprintf(L"%s", str.c_str());
 	}
 
 	SysFreeString(bstrName);
@@ -1259,8 +1277,8 @@ void PrintLocation(IDiaSymbol * pSymbol)
 			if ((pSymbol->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
 				(pSymbol->get_addressSection(&dwSect) == S_OK) &&
 				(pSymbol->get_addressOffset(&dwOff) == S_OK)) {
-				//wprintf(L"%s, [%08X][%04X:%08X]", SafeDRef(rgLocationTypeString, dwLocType), dwRVA, dwSect, dwOff);
-				wprintf(L"%s, ", SafeDRef(rgLocationTypeString, dwLocType));
+				wprintf(L"%s // [%08X][%04X:%08X]", SafeDRef(rgLocationTypeString, dwLocType), dwRVA + 0x400000, dwSect, dwOff);
+				//wprintf(L"%s, ", SafeDRef(rgLocationTypeString, dwLocType));
 			}
 			break;
 
@@ -1270,7 +1288,7 @@ void PrintLocation(IDiaSymbol * pSymbol)
 			if ((pSymbol->get_relativeVirtualAddress(&dwRVA) == S_OK) &&
 				(pSymbol->get_addressSection(&dwSect) == S_OK) &&
 				(pSymbol->get_addressOffset(&dwOff) == S_OK)) {
-				wprintf(L"%s, [%08X][%04X:%08X]", SafeDRef(rgLocationTypeString, dwLocType), dwRVA, dwSect, dwOff);
+				wprintf(L"%s // [%08X][%04X:%08X]", SafeDRef(rgLocationTypeString, dwLocType), dwRVA + 0x400000, dwSect, dwOff);
 			}
 			break;
 
@@ -1697,19 +1715,20 @@ void PrintBound(IDiaSymbol * pSymbol)
 //
 void PrintData(IDiaSymbol * pSymbol)
 {
-	PrintLocation(pSymbol);
-
 	DWORD dwDataKind;
 	if (pSymbol->get_dataKind(&dwDataKind) != S_OK) {
 		wprintf(L"ERROR - PrintData() get_dataKind");
 		return;
 	}
 
-	wprintf(L", %s", SafeDRef(rgDataKind, dwDataKind));
+	wprintf(L"%s", SafeDRef(rgDataKind, dwDataKind));
 	PrintSymbolType(pSymbol);
 
 	wprintf(L", ");
 	PrintName(pSymbol);
+	
+	wprintf(L", ");
+	PrintLocation(pSymbol);
 }
 
 ////////////////////////////////////////////////////////////
@@ -1720,13 +1739,13 @@ void PrintVariant(VARIANT var)
 	switch (var.vt) {
 		case VT_UI1:
 		case VT_I1:
-			wprintf(L" 0x%X", var.bVal);
+			wprintf(L" I1 0x%X", var.bVal);
 			break;
 
 		case VT_I2:
 		case VT_UI2:
 		case VT_BOOL:
-			wprintf(L" 0x%X", var.iVal);
+			wprintf(L" I2 0x%X", var.iVal);
 			break;
 
 		case VT_I4:
@@ -1734,19 +1753,19 @@ void PrintVariant(VARIANT var)
 		case VT_INT:
 		case VT_UINT:
 		case VT_ERROR:
-			wprintf(L" 0x%X", var.lVal);
+			wprintf(L" I4 0x%X", var.lVal);
 			break;
 
 		case VT_R4:
-			wprintf(L" %g", var.fltVal);
+			wprintf(L" R4 %g", var.fltVal);
 			break;
 
 		case VT_R8:
-			wprintf(L" %g", var.dblVal);
+			wprintf(L" R8 %g", var.dblVal);
 			break;
 
 		case VT_BSTR:
-			wprintf(L" \"%s\"", var.bstrVal);
+			wprintf(L" BSTR \"%s\"", var.bstrVal);
 			break;
 
 		default:

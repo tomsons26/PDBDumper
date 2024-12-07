@@ -57,3 +57,4 @@ const wchar_t * SzNameC7Reg(USHORT);
 //my addition
 bool DumpAllSpecificDwords(IDiaSession *, wchar_t *, wchar_t *);
 bool DumpCompilandContrib(IDiaSession *, IDiaSymbol *, const wchar_t *);
+bool DumpAllTypedefsAndConsts(IDiaSymbol *);
